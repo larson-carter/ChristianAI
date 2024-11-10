@@ -1,0 +1,7 @@
+# Ignore cache directory and all its contents
+cache/
+**/cache/
+
+# Ignore results directory and all its contents
+results/
+**/results/
