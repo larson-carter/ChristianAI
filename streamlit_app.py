@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from sentence_transformers import SentenceTransformer, util
@@ -11,19 +12,41 @@ st.set_page_config(page_title="Christian Pastor AI Assistant", layout="wide")
 st.title("Christian Pastor AI Assistant")
 st.write("**Created by Larson Carter from Carter Technologies, LLC.**")
 
+
 # Load model and tokenizer
 @st.cache_resource
 def load_model():
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained("fine_tuned_llama")
-    model = AutoModelForCausalLM.from_pretrained("fine_tuned_llama").to(device)
+    # Retrieve the Hugging Face API token from Streamlit secrets
+    huggingface_token = st.secrets["HUGGINGFACE_API_TOKEN"]
+
+    # Define the model identifier on Hugging Face Hub
+    model_name = "meta-llama/Llama-3.2-1B"
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load tokenizer with authentication
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name,
+        use_auth_token=huggingface_token,
+        # local_files_only=False  # Allow downloading if not cached
+    )
+
+    # Load model with authentication
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        use_auth_token=huggingface_token,
+        # local_files_only=False  # Allow downloading if not cached
+    ).to(device)
+
+    # Create a text generation pipeline
     generator = pipeline(
         'text-generation',
         model=model,
         tokenizer=tokenizer,
-        device=0 if device.type == "mps" else -1
+        device=0 if torch.cuda.is_available() else -1
     )
     return generator, device
+
 
 # Load embeddings and verses
 @st.cache_resource
@@ -34,8 +57,10 @@ def load_embeddings():
     embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
     return embedding_model, verse_embeddings, verses
 
+
 generator, device = load_model()
 embedding_model, verse_embeddings, verses = load_embeddings()
+
 
 # Function for semantic search
 def semantic_search(query, top_k=5):
@@ -43,6 +68,7 @@ def semantic_search(query, top_k=5):
     hits = util.semantic_search(query_embedding, verse_embeddings, top_k=top_k)
     hits = hits[0]  # Get the first (and only) query's results
     return [verses[hit['corpus_id']] for hit in hits]
+
 
 # Function to generate response
 def generate_response(user_input):
@@ -58,14 +84,15 @@ def generate_response(user_input):
     # Generate the response
     response = generator(
         prompt,
-        max_length=800,                # Increased length
+        max_length=800,  # Increased length
         num_return_sequences=1,
-        num_beams=5,                   # Beam search
-        no_repeat_ngram_size=3,        # Prevent repetition
+        num_beams=5,  # Beam search
+        no_repeat_ngram_size=3,  # Prevent repetition
         early_stopping=True
     )
 
     return response[0]['generated_text']
+
 
 # User Input
 user_input = st.text_input("Enter your question or topic:", "")
